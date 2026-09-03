@@ -130,6 +130,32 @@ class TestMideaC3Device:
         assert isinstance(queries[2], MessageQuerySilence)
         assert isinstance(queries[3], MessageQueryECO)
 
+    def test_appliance_query_enabled_for_standard_subtype(self) -> None:
+        """Test the 0xA0 appliance query stays armed for a standard C3."""
+        assert self.device._is_pool is False
+        assert self.device._appliance_query is True
+
+    def test_appliance_query_disabled_for_pool_subtype(self) -> None:
+        """Test the 0xA0 appliance query is skipped for a pool heat pump.
+
+        Pool heat pumps do not answer it and stop serving queries once it has
+        been sent, so refresh_status must never seed stage 1 for them.
+        """
+        device = MideaC3Device(
+            name="Test Pool Device",
+            device_id=2,
+            ip_address="192.168.1.2",
+            port=12345,
+            token="AA",
+            key="BB",
+            device_protocol=ProtocolVersion.V3,
+            model="test_model",
+            subtype=513,
+            customize="",
+        )
+        assert device._is_pool is True
+        assert device._appliance_query is False
+
     def test_process_message(self) -> None:
         """Test process message."""
         with patch("midealan.devices.c3.MessageC3Response") as mock_message_response:

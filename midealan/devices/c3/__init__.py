@@ -16,12 +16,14 @@ from .message import (
     MessageQueryBasic,
     MessageQueryDisinfect,
     MessageQueryECO,
+    MessageQueryPoolExtended,
     MessageQuerySilence,
     MessageQueryUnitPara,
     MessageSet,
     MessageSetDisinfect,
     MessageSetECO,
     MessageSetSilent,
+    is_pool_subtype,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -178,6 +180,22 @@ class MideaC3Device(MideaDevice):
         )
         self._default_temperature_step: float = 0.5
         self._temperature_step: float = 0.5
+        # Pool heat pumps share device type 0xC3 but use different body
+        # layouts; the subtype is the only way to tell them apart.
+        self._is_pool = is_pool_subtype(self._subtype)
+        if self._is_pool:
+            # Pool heat pumps do not answer the standard 0xA0 appliance query,
+            # and sending it stops the unit serving any further query on that
+            # session, so skip stage 1 of refresh_status entirely. The message
+            # protocol version normally comes from that reply and so stays 0
+            # here, which is what the pool captures show on the wire.
+            self._appliance_query = False
+        _LOGGER.debug(
+            "[%s] C3 subtype %s, pool heat pump: %s",
+            self.device_id,
+            self._subtype,
+            self._is_pool,
+        )
         self.set_customize(customize)
 
     @property
@@ -192,6 +210,14 @@ class MideaC3Device(MideaDevice):
 
     def build_query(self) -> list[MessageQuery]:
         """Midea C3 device build query."""
+        if self._is_pool:
+            # Pool heat pumps serve only the 0x01 basic and 0x02 extended
+            # status bodies; the HVAC-only disinfect/silence/ECO/unitpara
+            # queries have no meaning for them.
+            return [
+                MessageQueryBasic(self._message_protocol_version),
+                MessageQueryPoolExtended(self._message_protocol_version),
+            ]
         return [
             MessageQueryBasic(self._message_protocol_version),
             MessageQueryDisinfect(self._message_protocol_version),
@@ -202,7 +228,7 @@ class MideaC3Device(MideaDevice):
 
     def process_message(self, msg: bytes) -> dict[str, Any]:
         """Midea C3 device process message."""
-        message = MessageC3Response(msg)
+        message = MessageC3Response(msg, subtype=self._subtype)
         _LOGGER.debug("[%s] Received: %s", self.device_id, message)
         new_status = {}
         for status in self._attributes:

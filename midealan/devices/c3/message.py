@@ -15,6 +15,17 @@ TEMP_NEG_VALUE = 127
 # Outdoor fan speed is transmitted as RPM / 10.
 FAN_SPEED_FACTOR = 10
 
+# Subtypes that are pool heat pumps rather than the standard C3 HVAC heat
+# pump. They share device type 0xC3 but use a completely different body
+# layout, so the decoder must be told which variant it is looking at; the
+# frames themselves carry nothing that distinguishes them.
+POOL_SUBTYPES = frozenset({513})
+
+
+def is_pool_subtype(subtype: int | None) -> bool:
+    """Return True if the subtype identifies a C3 pool heat pump."""
+    return subtype in POOL_SUBTYPES
+
 
 class C3SilentLevel(IntEnum):
     """C3 Silent Level."""
@@ -123,6 +134,19 @@ class MessageQueryHMIPara(MessageQuery):
     def __init__(self, protocol_version: int) -> None:
         """Initialize C3 message query silence."""
         super().__init__(protocol_version, ListTypes.X0A)
+
+
+class MessageQueryPoolExtended(MessageQuery):
+    """C3 Message query pool extended status.
+
+    Pool heat pumps answer a 0x02 body with the ambient/water temperatures,
+    silent and boost state, current, voltage and SW versions. Their basic
+    status uses body 0x01, so MessageQueryBasic is reused for that.
+    """
+
+    def __init__(self, protocol_version: int) -> None:
+        """Initialize C3 message query pool extended status."""
+        super().__init__(protocol_version, ListTypes.X02)
 
 
 class MessageSet(MessageC3Base):
@@ -594,9 +618,20 @@ class C3UnitParaUpBody(MessageBody):
 class MessageC3Response(MessageResponse):
     """C3 message response."""
 
-    def __init__(self, message: bytes) -> None:
-        """Initialize C3 message response."""
+    def __init__(self, message: bytes, subtype: int = 0) -> None:
+        """Initialize C3 message response.
+
+        ``subtype`` selects the body layout. Pool heat pumps share device type
+        0xC3 with the standard HVAC heat pump but lay their bodies out
+        differently, and the frames carry nothing that tells them apart, so the
+        device passes its subtype in (same approach as the FA MessageSet). The
+        raw subtype is kept rather than a pre-computed bool so future pool
+        firmwares can be distinguished here. Defaults to 0, the standard HVAC
+        behaviour, for existing callers.
+        """
         super().__init__(bytearray(message))
+        self._subtype = subtype
+        self._pool = is_pool_subtype(subtype)
         if (
             self.message_type
             in [MessageType.set, MessageType.notify1, MessageType.query]
