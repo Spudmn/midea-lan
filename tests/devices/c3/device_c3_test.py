@@ -11,11 +11,23 @@ from midealan.devices.c3 import (
 )
 from midealan.devices.c3.message import (
     C3DeviceMode,
+    C3PoolDeviceMode,
+    C3PoolPerfMode,
     C3SilentLevel,
     MessageQueryBasic,
     MessageQueryDisinfect,
     MessageQueryECO,
+    MessageQueryPoolExtended,
+    MessageQueryPoolSerial,
     MessageQuerySilence,
+)
+from tests.devices.c3.message_c3_pool_test import (
+    BASIC_HEAT_37,
+    CAPTURED_SERIAL,
+    EXT_BOOST,
+    POOL_SUBTYPE,
+    QUERY_HEADER,
+    SERIAL_BODY,
 )
 
 
@@ -429,3 +441,120 @@ class TestMideaC3Device:
         for name, value in expected.items():
             assert new_status[name] == value, name
             assert self.device.attributes[DeviceAttributes[name]] == value, name
+
+
+class TestMideaC3PoolDevice:
+    """Test the Midea C3 pool heat pump variant (subtype 513)."""
+
+    device: MideaC3Device
+
+    @pytest.fixture(autouse=True)
+    def _setup_device(self) -> None:
+        """Midea C3 pool heat pump setup."""
+        self.device = MideaC3Device(
+            name="Test Pool Device",
+            device_id=2,
+            ip_address="192.168.1.2",
+            port=12345,
+            token="AA",
+            key="BB",
+            device_protocol=ProtocolVersion.V3,
+            model="test_model",
+            subtype=POOL_SUBTYPE,
+            customize="",
+        )
+
+    def test_pool_attribute_set(self) -> None:
+        """Test the pool heat pump gets its own attribute set."""
+        assert self.device._is_pool is True
+        assert self.device.attributes[DeviceAttributes.power] is False
+        assert self.device.attributes[DeviceAttributes.mode] == C3PoolDeviceMode.OFF
+        assert (
+            self.device.attributes[DeviceAttributes.performance_mode]
+            == C3PoolPerfMode.IDLE.name
+        )
+        # The HVAC-only attributes must not be present.
+        assert DeviceAttributes.zone1_power not in self.device.attributes
+        assert DeviceAttributes.dhw_power not in self.device.attributes
+
+    def test_temperature_step(self) -> None:
+        """Test the pool heat pump only accepts whole degrees."""
+        assert self.device.temperature_step == 1.0
+
+    def test_build_query(self) -> None:
+        """Test only the two supported bodies are queried."""
+        queries = self.device.build_query()
+        assert len(queries) == 2
+        assert isinstance(queries[0], MessageQueryBasic)
+        assert isinstance(queries[1], MessageQueryPoolExtended)
+
+    def test_process_basic_message(self) -> None:
+        """Test a captured 0x01 body updates the attributes."""
+        new_status = self.device.process_message(
+            bytes.fromhex(QUERY_HEADER + BASIC_HEAT_37),
+        )
+        assert new_status["power"] is True
+        assert new_status["mode"] == C3PoolDeviceMode.HEAT
+        assert self.device.attributes[DeviceAttributes.target_temperature] == 37
+        assert self.device.attributes[DeviceAttributes.temperature_max] == 40
+        assert self.device.attributes[DeviceAttributes.temperature_min] == 10
+        assert self.device.attributes[DeviceAttributes.compressor_running] is False
+        assert self.device.attributes[DeviceAttributes.compressor_run_hours] == 9
+        assert self.device.attributes[DeviceAttributes.error_code] == 0
+
+    def test_process_extended_message(self) -> None:
+        """Test a captured 0x02 body updates the attributes."""
+        new_status = self.device.process_message(
+            bytes.fromhex(QUERY_HEADER + EXT_BOOST),
+        )
+        assert new_status["boost_mode"] is True
+        assert (
+            self.device.attributes[DeviceAttributes.performance_mode]
+            == C3PoolPerfMode.BOOST.name
+        )
+        assert self.device.attributes[DeviceAttributes.outdoor_temperature] == 11
+        assert self.device.attributes[DeviceAttributes.temp_tw_in] == 13
+        assert self.device.attributes[DeviceAttributes.temp_tw_out] == 14
+        assert self.device.attributes[DeviceAttributes.odu_voltage] == 229
+        assert self.device.attributes[DeviceAttributes.current_input] == 10
+        assert self.device.attributes[DeviceAttributes.water_flow] == 1
+        assert self.device.attributes[DeviceAttributes.controller_sw_version] == 35
+        assert self.device.attributes[DeviceAttributes.main_board_sw_version] == 12
+
+    def test_set_attribute_is_not_supported_yet(self) -> None:
+        """Test writing is refused rather than sending an HVAC frame."""
+        with patch.object(self.device, "build_send") as mock_build_send:
+            self.device.set_attribute(DeviceAttributes.power.value, True)
+            mock_build_send.assert_not_called()
+
+    def test_serial_query_is_asked_once(self) -> None:
+        """Test body 0x0C is a one-time init query, disarmed by its reply."""
+        queries = self.device.build_init_query()
+        assert len(queries) == 1
+        assert isinstance(queries[0], MessageQueryPoolSerial)
+
+        self.device.process_message(bytes.fromhex(QUERY_HEADER + SERIAL_BODY))
+        assert self.device.attributes[DeviceAttributes.sn_code] == (CAPTURED_SERIAL)
+        # the reply disarms it, so it is not re-sent on every refresh
+        assert self.device.build_init_query() == []
+
+    def test_serial_query_stays_armed_without_a_reply(self) -> None:
+        """Test an unanswered query is offered again on the next refresh."""
+        self.device.process_message(bytes.fromhex(QUERY_HEADER + BASIC_HEAT_37))
+        assert len(self.device.build_init_query()) == 1
+
+    def test_standard_device_has_no_init_query(self) -> None:
+        """Test the HVAC C3 is unaffected by the pool serial query."""
+        device = MideaC3Device(
+            name="Test Device",
+            device_id=3,
+            ip_address="192.168.1.3",
+            port=12345,
+            token="AA",
+            key="BB",
+            device_protocol=ProtocolVersion.V3,
+            model="test_model",
+            subtype=1,
+            customize="",
+        )
+        assert device.build_init_query() == []

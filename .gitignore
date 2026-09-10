@@ -142,3 +142,15 @@ reports/
 library_test.json
 midea-lan.json
 .claude
+
+# Eclipse / PyDev
+.project
+.pydevproject
+
+# CSV captures written by pool_hw_test.py
+pool_query_*.csv
+pool_poll_*.csv
+pool_listen_*.csv
+
+# Local device credentials for pool_hw_test.py
+pool_hw_test.json

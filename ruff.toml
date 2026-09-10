@@ -40,6 +40,13 @@ lint.ignore = [
 "library_test.py" = [
     "PLR0915",  # Too many statements
 ]
+"pool_hw_test.py" = [
+    "S105",     # Possible hardcoded password assigned to (the device token/key)
+    "S106",     # Possible hardcoded password assigned to argument
+    "SLF001",   # Private member accessed (reports the library's internal state)
+    "T201",     # `print` found (it is a console tool)
+    "PLR0915",  # Too many statements
+]
 "midealan/security.py" = [
     "S324",     # Probable use of insecure hash functions in `hashlib`: `md5`
 ]

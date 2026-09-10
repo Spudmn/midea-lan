@@ -21,10 +21,197 @@ FAN_SPEED_FACTOR = 10
 # frames themselves carry nothing that distinguishes them.
 POOL_SUBTYPES = frozenset({513})
 
+# --- Pool heat pump body layout ---------------------------------------------
+# All offsets below are documented in pool_protocol_decoding.md and are counted
+# from the start of the body, i.e. index 0 is the body-type byte. The library
+# strips the trailing checksum, so a 52 byte pool body arrives here as 51 bytes
+# (indices 0..50) and the note's indices can be used unchanged.
+#
+# Both pool bodies transmit temperatures as `celsius + 35`.
+POOL_TEMP_OFFSET = 35
+
+# Body 0x01 - basic status.
+POOL_BASIC_MIN_LENGTH = 23
+POOL_BASIC_MODE = 2
+POOL_BASIC_TARGET_TEMP = 3
+POOL_BASIC_TEMP_MAX = 4
+POOL_BASIC_TEMP_MIN = 5
+# Same value (28C) in heat and cool, 50C in pump mode. Purpose unknown, exposed
+# so it can be logged and reviewed.
+POOL_BASIC_UNKNOWN_TEMP = 6
+POOL_BASIC_ERROR_CODE = 15
+POOL_BASIC_RUN_STATUS = 16
+# Disproved as a temperature (read 222 during an E8 fault). Meaning unknown,
+# exposed raw for logging.
+POOL_BASIC_UNKNOWN_22 = 22
+POOL_BASIC_COMP_RUN_HOURS = 47
+# Bit 7 of the run-status byte is set while the compressor runs.
+POOL_RUN_STATUS_COMPRESSOR = 0x80
+
+# Body 0x02 - extended status.
+POOL_EXT_MIN_LENGTH = 27
+POOL_EXT_AMBIENT_TEMP = 22
+POOL_EXT_TEMP_TW_IN = 25
+POOL_EXT_TEMP_TW_OUT = 26
+POOL_EXT_CURRENT_INPUT = 28
+POOL_EXT_VOLTAGE = 30
+POOL_EXT_MAIN_BOARD_SW = 34
+POOL_EXT_CONTROLLER_SW = 40
+POOL_EXT_SUPER_SILENT = 41
+POOL_EXT_PERF_MODE = 42
+# Matches the app's "Water flow: 1 m3/h"; still a candidate, the unit has only
+# ever been observed at a single flow rate.
+POOL_EXT_WATER_FLOW = 43
+
+# Body 0x0C - the appliance serial number, 36 bytes: the body type, a flags
+# byte, then printable ASCII, NUL terminated and NUL padded. Confirmed on
+# hardware 2026-09-04: `0c 01 "W7841101449FA9020100005" 00...`.
+#
+# Unlike the HVAC X10 serial blocks this one is NOT dash-padded and is not
+# located by scanning: it sits at a fixed offset in a body that carries
+# nothing else, so it is simply sliced. (Scanning for padding is what the
+# upstream C3 ASCII work had to abandon; a fixed slice cannot be thrown off
+# by a neighbouring block being populated.)
+POOL_SERIAL_DATA_OFFSET = 2
+POOL_SERIAL_MAX_LENGTH = 32
+POOL_SERIAL_MIN_LENGTH = POOL_SERIAL_DATA_OFFSET + 1
+
+
+def parse_pool_serial(body: bytearray) -> str | None:
+    """Decode the ASCII serial number carried by the pool 0x0C body.
+
+    Returns None for a truncated body, an empty block, or anything that is
+    not printable ASCII, rather than raising or returning partial text.
+    """
+    if len(body) < POOL_SERIAL_MIN_LENGTH:
+        return None
+    block = bytes(
+        body[
+            POOL_SERIAL_DATA_OFFSET : POOL_SERIAL_DATA_OFFSET + POOL_SERIAL_MAX_LENGTH
+        ],
+    )
+    terminator = block.find(0)
+    if terminator != -1:
+        block = block[:terminator]
+    candidate = block.strip()
+    if not candidate:
+        return None
+    try:
+        decoded = candidate.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    return decoded if decoded.isprintable() else None
+
 
 def is_pool_subtype(subtype: int | None) -> bool:
     """Return True if the subtype identifies a C3 pool heat pump."""
     return subtype in POOL_SUBTYPES
+
+
+def pool_temperature(raw: int) -> float:
+    """Decode a pool heat pump temperature byte to degrees celsius."""
+    return float(raw - POOL_TEMP_OFFSET)
+
+
+class C3PoolDeviceMode(IntEnum):
+    """C3 pool heat pump mode, body 0x01 byte 2."""
+
+    OFF = 0x00
+    HEAT = 0x01
+    COOL = 0x03
+    PUMP = 0x04
+
+
+class C3PoolPerfMode(IntEnum):
+    """C3 pool heat pump performance level, body 0x02 byte 42.
+
+    This is an enum of the *active* level, not a bitfield: silent and boost are
+    mutually exclusive on this unit.
+    """
+
+    IDLE = 0x00
+    SILENT = 0x01
+    BOOST = 0x02
+    NORMAL = 0x03
+
+
+
+
+
+
+
+"""
+Midea C3 pool heat pump — error number lookup.
+
+Maps the "Error number in message" value to its (Error Code, Description).
+Fault descriptions from the pool heat pump service manual, keyed by the
+two-character code shown on the wired controller.
+
+"""
+
+ERROR_TABLE = {
+    0:  ("",   "None"),
+    2:  ("bA", "Ambient temp. sensor (T4) out of operation range"),
+    3:  ("C7", "High temperature protection of inverter module"),
+    4:  ("E0", "Water flow malfunction (after 3 times E8)"),
+    5:  ("E2", "Communication malfunction between controller and main control board"),
+    6:  ("E3", "Total outlet water temp. sensor (T1) malfunction"),
+    7:  ("E5", "Air side heat exchanger temperature sensor (T3) malfunction"),
+    8:  ("E6", "The ambient temperature sensor (T4) malfunction"),
+    9:  ("E8", "Water flow malfunction"),
+    10: ("E9", "Suction temperature sensor (Th) malfunction"),
+    11: ("EA", "Discharge temperature sensor (Tp) malfunction"),
+    12: ("Ed", "Inlet water temp. sensor (Tw_in) malfunction"),
+    13: ("EE", "EEprom malfunction"),
+    14: ("F1", "DC bus low voltage protection"),
+    15: ("F6", "EXV1 fault"),
+    16: ("H1", "Communication malfunction between main control board and inverter board"),
+    17: ("H2", "Liquid refrigerant temp. sensor (T2) malfunction"),
+    18: ("H3", "Gas refrigerant temp. sensor (T2B) malfunction"),
+    19: ("H4", "Three times L0 protects"),
+    20: ("H6", "The DC fan malfunction"),
+    21: ("H7", "Voltage protection"),
+    22: ("H8", "HP pressure sensor malfunction"),
+    23: ("HA", "Outlet water temp. sensor (Tw_out) malfunction"),
+    24: ("Hb", "Three times PP protection and Tw_out below 7 \u2103"),
+    25: ("HF", "Inverter module board EEprom malfunction"),
+    26: ("HH", "10 times H6 in 2 hours"),
+    27: ("HP", "Low pressure protection in cooling mode"),
+    28: ("P0", "Low pressure switch protection"),
+    29: ("P1", "High pressure switch protection"),
+    30: ("P3", "Compressor overcurrent protection"),
+    31: ("P4", "Comp discharge temp. too high protection"),
+    32: ("P5", "|Tw_out - Tw_in| value too big protection"),
+    33: ("Pb", "Anti-freeze mode"),
+    34: ("PP", "|Tw_out - Tw_in| abnormal protection"),
+    35: ("Pd", "High temperature protection of air side heat exchanger temperature (T3)"),
+    36: ("L0", "Inverter or compressor protection"),
+    37: ("L1", "DC bus low voltage protection"),
+    38: ("L2", "DC bus high voltage protection"),
+    39: ("L3", "Current sampling error of PFC circuit"),
+    40: ("L4", "Rotating stall protection"),
+    41: ("L5", "Zero speed protection"),
+    42: ("L7", "Phase loss protection of compressor"),
+}
+
+
+def pool_error_display_code(raw: int) -> str:
+    """Return the display code for a raw pool error byte ("" when healthy)."""
+    try:
+        return ERROR_TABLE[raw][0]
+    except KeyError:
+        return f"?? (0x{raw:02X})"
+
+
+def pool_error_description(raw: int) -> str:
+    """Return the manual description for a raw pool error byte."""
+    try:
+        return ERROR_TABLE[raw][1]
+    except KeyError:
+        return f"Unknown error"
+
+
+
 
 
 class C3SilentLevel(IntEnum):
@@ -147,6 +334,19 @@ class MessageQueryPoolExtended(MessageQuery):
     def __init__(self, protocol_version: int) -> None:
         """Initialize C3 message query pool extended status."""
         super().__init__(protocol_version, ListTypes.X02)
+
+
+class MessageQueryPoolSerial(MessageQuery):
+    """C3 Message query pool serial number.
+
+    Body 0x0C answers with the appliance serial as ASCII. It never changes,
+    so the device asks for it once at connect time (build_init_query) rather
+    than on every refresh.
+    """
+
+    def __init__(self, protocol_version: int) -> None:
+        """Initialize C3 message query pool serial number."""
+        super().__init__(protocol_version, ListTypes.X0C)
 
 
 class MessageSet(MessageC3Base):
@@ -615,6 +815,105 @@ class C3UnitParaUpBody(MessageBody):
         self.unit_mode_run = body[data_offset + 59]
 
 
+class C3PoolBasicBody(MessageBody):
+    """C3 pool heat pump basic status body (body type 0x01).
+
+    Layout documented in pool_protocol_decoding.md. It shares nothing with the
+    standard C3 basic body beyond the body type, hence a separate class.
+    """
+
+    def __init__(self, body: bytearray) -> None:
+        """Initialize C3 pool basic message body."""
+        super().__init__(body)
+        raw_mode = body[POOL_BASIC_MODE]
+        self.power = raw_mode != C3PoolDeviceMode.OFF
+        self.mode = raw_mode
+        # The unit keeps a separate setpoint and separate limits per mode, and
+        # bytes 3..5 always describe the currently selected mode.
+        self.target_temperature = pool_temperature(body[POOL_BASIC_TARGET_TEMP])
+        self.temperature_max = pool_temperature(body[POOL_BASIC_TEMP_MAX])
+        self.temperature_min = pool_temperature(body[POOL_BASIC_TEMP_MIN])
+        self.pool_unknown_basic_temp = pool_temperature(body[POOL_BASIC_UNKNOWN_TEMP])
+        self.error_code = body[POOL_BASIC_ERROR_CODE]
+        self.error_code_display = pool_error_display_code(self.error_code)
+        self.error_description = pool_error_description(self.error_code)
+        
+        
+        body[POOL_BASIC_ERROR_CODE]
+        
+        
+        self.compressor_running = (
+            body[POOL_BASIC_RUN_STATUS] & POOL_RUN_STATUS_COMPRESSOR > 0
+        )
+        self.pool_unknown_basic_22 = body[POOL_BASIC_UNKNOWN_22]
+        
+        self.pool_unknown_16_36_37 = body[36] << 8 | body[37]
+        self.pool_unknown_16_38_39 = body[38] << 8 | body[39]
+        self.pool_unknown_16_40_41 = body[40] << 8 | body[41]
+
+        
+        
+        
+        # Cumulative hours; read defensively so a short body cannot raise.
+        self.compressor_run_hours = self.read_byte(body, POOL_BASIC_COMP_RUN_HOURS)
+
+
+class C3PoolExtendedBody(MessageBody):
+    """C3 pool heat pump extended status body (body type 0x02).
+
+    Carries every temperature sensor the app shows, the electrical readings and
+    the performance level. Read only - the unit never answers a SET on 0x02.
+    """
+
+    def __init__(self, body: bytearray) -> None:
+        """Initialize C3 pool extended message body."""
+        super().__init__(body)
+        # The app labels this "ambient"; it is the T4 outdoor sensor.
+        self.outdoor_temperature = pool_temperature(body[POOL_EXT_AMBIENT_TEMP])
+        self.temp_tw_in = pool_temperature(body[POOL_EXT_TEMP_TW_IN])
+        self.temp_tw_out = pool_temperature(body[POOL_EXT_TEMP_TW_OUT])
+        self.current_input = self.read_byte(body, POOL_EXT_CURRENT_INPUT)
+        self.odu_voltage = self.read_byte(body, POOL_EXT_VOLTAGE)
+        self.main_board_sw_version = self.read_byte(body, POOL_EXT_MAIN_BOARD_SW)
+        self.controller_sw_version = self.read_byte(body, POOL_EXT_CONTROLLER_SW)
+        self.water_flow = self.read_byte(body, POOL_EXT_WATER_FLOW)
+        super_silent = self.read_byte(body, POOL_EXT_SUPER_SILENT) > 0
+        raw_perf = self.read_byte(body, POOL_EXT_PERF_MODE)
+        try:
+            perf_mode = C3PoolPerfMode(raw_perf)
+        except ValueError:
+            # Keep unmapped levels visible rather than silently reporting idle.
+            self.performance_mode = f"unknown_{raw_perf:#04x}"
+            perf_mode = None
+        else:
+            self.performance_mode = perf_mode.name
+        self.silent_mode = perf_mode == C3PoolPerfMode.SILENT
+        self.boost_mode = perf_mode == C3PoolPerfMode.BOOST
+        if not self.silent_mode:
+            silent_level = C3SilentLevel.OFF
+        elif super_silent:
+            silent_level = C3SilentLevel.SUPER_SILENT
+        else:
+            silent_level = C3SilentLevel.SILENT
+        self.silent_level = silent_level.name
+
+
+class C3PoolSerialBody(MessageBody):
+    """C3 pool heat pump serial number body (body type 0x0C).
+
+    Deliberately NOT called ``serial_number``: ``MideaDevice.serial_number``
+    already holds the 32 character Wi-Fi module serial that UDP discovery
+    reports (``0000C331`` + module id + suffix). This is a different, shorter
+    identifier that only the appliance itself reports, so it gets the
+    ``sn_code`` name used elsewhere in the C3 for on-the-wire SN blocks.
+    """
+
+    def __init__(self, body: bytearray) -> None:
+        """Initialize C3 pool serial number message body."""
+        super().__init__(body)
+        self.sn_code = parse_pool_serial(body)
+
+
 class MessageC3Response(MessageResponse):
     """C3 message response."""
 
@@ -632,7 +931,9 @@ class MessageC3Response(MessageResponse):
         super().__init__(bytearray(message))
         self._subtype = subtype
         self._pool = is_pool_subtype(subtype)
-        if (
+        if self._pool:
+            self._set_pool_body()
+        elif (
             self.message_type
             in [MessageType.set, MessageType.notify1, MessageType.query]
             and self.body_type == ListTypes.X01
@@ -655,3 +956,18 @@ class MessageC3Response(MessageResponse):
         elif self.body_type == ListTypes.X10:
             self.set_body(C3UnitParaBody(super().body, data_offset=1))
         self.set_attr()
+
+    def _set_pool_body(self) -> None:
+        """Decode a pool heat pump body.
+
+        Pool bodies are selected by body type alone: the query response, the
+        set echo and the notify that follows a set all carry the same layout.
+        Anything else is left as the raw generic body.
+        """
+        body = super().body
+        if self.body_type == ListTypes.X01 and len(body) >= POOL_BASIC_MIN_LENGTH:
+            self.set_body(C3PoolBasicBody(body))
+        elif self.body_type == ListTypes.X02 and len(body) >= POOL_EXT_MIN_LENGTH:
+            self.set_body(C3PoolExtendedBody(body))
+        elif self.body_type == ListTypes.X0C:
+            self.set_body(C3PoolSerialBody(body))
