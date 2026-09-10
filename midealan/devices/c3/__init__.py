@@ -118,7 +118,6 @@ class DeviceAttributes(StrEnum):
     pool_unknown_basic_temp = "pool_unknown_basic_temp"
     pool_unknown_basic_22 = "pool_unknown_basic_22"
     pool_unknown_16_36_37 = "pool_unknown_16_36_37"
-    instant_power0 = "instant_power0"
     pool_mode = "pool_mode"
     # Pool-specific temperature fields to avoid colliding with HVAC list types
     pool_target_temperature = "pool_target_temperature"
