@@ -119,6 +119,11 @@ class DeviceAttributes(StrEnum):
     pool_unknown_basic_22 = "pool_unknown_basic_22"
     pool_unknown_16_36_37 = "pool_unknown_16_36_37"
     instant_power0 = "instant_power0"
+    pool_mode = "pool_mode"
+    # Pool-specific temperature fields to avoid colliding with HVAC list types
+    pool_target_temperature = "pool_target_temperature"
+    pool_temperature_max = "pool_temperature_max"
+    pool_temperature_min = "pool_temperature_min"
     pool_unknown_16_40_41 = "pool_unknown_16_40_41"
 
 
@@ -131,10 +136,11 @@ def pool_attributes() -> dict[DeviceAttributes, Any]:
     """
     return {
         DeviceAttributes.power: False,
-        DeviceAttributes.mode: C3PoolDeviceMode.OFF,
-        DeviceAttributes.target_temperature: None,
-        DeviceAttributes.temperature_max: None,
-        DeviceAttributes.temperature_min: None,
+        DeviceAttributes.pool_mode: C3PoolDeviceMode.OFF,
+        # Pool uses separate names to avoid colliding with HVAC per-zone list
+        DeviceAttributes.pool_target_temperature: None,
+        DeviceAttributes.pool_temperature_max: None,
+        DeviceAttributes.pool_temperature_min: None,
         # "ambient" in the app; the T4 outdoor sensor.
         DeviceAttributes.outdoor_temperature: None,
         DeviceAttributes.temp_tw_in: None,

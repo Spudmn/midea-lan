@@ -827,12 +827,17 @@ class C3PoolBasicBody(MessageBody):
         super().__init__(body)
         raw_mode = body[POOL_BASIC_MODE]
         self.power = raw_mode != C3PoolDeviceMode.OFF
-        self.mode = raw_mode
+        # Expose pool mode under a pool-specific name to avoid feeding the
+        # HVAC `mode` field which is an enum/list incompatible with pool
+        # numbering.
+        self.pool_mode = raw_mode
         # The unit keeps a separate setpoint and separate limits per mode, and
         # bytes 3..5 always describe the currently selected mode.
-        self.target_temperature = pool_temperature(body[POOL_BASIC_TARGET_TEMP])
-        self.temperature_max = pool_temperature(body[POOL_BASIC_TEMP_MAX])
-        self.temperature_min = pool_temperature(body[POOL_BASIC_TEMP_MIN])
+        # Use pool-specific names to avoid colliding with HVAC list-typed
+        # attributes that expect per-zone lists.
+        self.pool_target_temperature = pool_temperature(body[POOL_BASIC_TARGET_TEMP])
+        self.pool_temperature_max = pool_temperature(body[POOL_BASIC_TEMP_MAX])
+        self.pool_temperature_min = pool_temperature(body[POOL_BASIC_TEMP_MIN])
         self.pool_unknown_basic_temp = pool_temperature(body[POOL_BASIC_UNKNOWN_TEMP])
         self.error_code = body[POOL_BASIC_ERROR_CODE]
         self.error_code_display = pool_error_display_code(self.error_code)
