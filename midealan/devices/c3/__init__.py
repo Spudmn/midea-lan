@@ -109,7 +109,6 @@ class DeviceAttributes(StrEnum):
     performance_mode = "performance_mode"
     compressor_running = "compressor_running"
     compressor_run_hours = "compressor_run_hours"
-    current_input = "current_input"
     water_flow = "water_flow"
     main_board_sw_version = "main_board_sw_version"
     controller_sw_version = "controller_sw_version"
@@ -119,7 +118,7 @@ class DeviceAttributes(StrEnum):
     pool_unknown_basic_temp = "pool_unknown_basic_temp"
     pool_unknown_basic_22 = "pool_unknown_basic_22"
     pool_unknown_16_36_37 = "pool_unknown_16_36_37"
-    pool_unknown_16_38_39 = "pool_unknown_16_38_39"
+    instant_power0 = "instant_power0"
     pool_unknown_16_40_41 = "pool_unknown_16_40_41"
 
 
@@ -146,7 +145,7 @@ def pool_attributes() -> dict[DeviceAttributes, Any]:
         DeviceAttributes.performance_mode: C3PoolPerfMode.IDLE.name,
         DeviceAttributes.compressor_running: False,
         DeviceAttributes.compressor_run_hours: None,
-        DeviceAttributes.current_input: None,
+        DeviceAttributes.odu_comp_current: None,
         DeviceAttributes.odu_voltage: None,
         DeviceAttributes.water_flow: None,
         DeviceAttributes.main_board_sw_version: None,
@@ -164,7 +163,7 @@ def pool_attributes() -> dict[DeviceAttributes, Any]:
         DeviceAttributes.pool_unknown_basic_22: None,
         
         DeviceAttributes.pool_unknown_16_36_37: None,
-        DeviceAttributes.pool_unknown_16_38_39: None,
+        DeviceAttributes.instant_power0: None,
         DeviceAttributes.pool_unknown_16_40_41: None,
         
         

@@ -516,7 +516,7 @@ class TestMideaC3PoolDevice:
         assert self.device.attributes[DeviceAttributes.temp_tw_in] == 13
         assert self.device.attributes[DeviceAttributes.temp_tw_out] == 14
         assert self.device.attributes[DeviceAttributes.odu_voltage] == 229
-        assert self.device.attributes[DeviceAttributes.current_input] == 10
+        assert self.device.attributes[DeviceAttributes.odu_comp_current] == 10
         assert self.device.attributes[DeviceAttributes.water_flow] == 1
         assert self.device.attributes[DeviceAttributes.controller_sw_version] == 35
         assert self.device.attributes[DeviceAttributes.main_board_sw_version] == 12

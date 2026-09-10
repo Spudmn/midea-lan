@@ -848,7 +848,7 @@ class C3PoolBasicBody(MessageBody):
         self.pool_unknown_basic_22 = body[POOL_BASIC_UNKNOWN_22]
         
         self.pool_unknown_16_36_37 = body[36] << 8 | body[37]
-        self.pool_unknown_16_38_39 = body[38] << 8 | body[39]
+        self.instant_power0 = body[38] << 8 | body[39]
         self.pool_unknown_16_40_41 = body[40] << 8 | body[41]
 
         
@@ -872,7 +872,7 @@ class C3PoolExtendedBody(MessageBody):
         self.outdoor_temperature = pool_temperature(body[POOL_EXT_AMBIENT_TEMP])
         self.temp_tw_in = pool_temperature(body[POOL_EXT_TEMP_TW_IN])
         self.temp_tw_out = pool_temperature(body[POOL_EXT_TEMP_TW_OUT])
-        self.current_input = self.read_byte(body, POOL_EXT_CURRENT_INPUT)
+        self.odu_comp_current = self.read_byte(body, POOL_EXT_CURRENT_INPUT)
         self.odu_voltage = self.read_byte(body, POOL_EXT_VOLTAGE)
         self.main_board_sw_version = self.read_byte(body, POOL_EXT_MAIN_BOARD_SW)
         self.controller_sw_version = self.read_byte(body, POOL_EXT_CONTROLLER_SW)
