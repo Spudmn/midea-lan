@@ -25,6 +25,7 @@ from .message import (
     MessageSet,
     MessageSetDisinfect,
     MessageSetECO,
+    MessageSetPool,
     MessageSetSilent,
     is_pool_subtype,
 )
@@ -439,14 +440,37 @@ class MideaC3Device(MideaDevice):
     def set_attribute(self, attr: str, value: bool | float | str) -> None:
         """Midea C3 device set attribute."""
         if self._is_pool:
-            # Writing is not implemented for the pool heat pump yet, and the
-            # HVAC set frames below would be decoded by it as something else
-            # entirely, so refuse rather than send a wrong frame.
-            _LOGGER.warning(
-                "[%s] Pool heat pump does not support setting %s yet",
-                self.device_id,
-                attr,
-            )
+            if attr in (
+                DeviceAttributes.power,
+                DeviceAttributes.pool_mode,
+                DeviceAttributes.pool_target_temperature,
+            ):
+                message = MessageSetPool(self._message_protocol_version)
+                message.power = bool(self._attributes[DeviceAttributes.power])
+                message.pool_mode = C3PoolDeviceMode(
+                    self._attributes[DeviceAttributes.pool_mode]
+                )
+                message.target_temperature = float(
+                    self._attributes[DeviceAttributes.pool_target_temperature] or 0.0
+                )
+                if attr == DeviceAttributes.power:
+                    message.power = bool(value)
+                elif attr == DeviceAttributes.pool_mode:
+                    message.pool_mode = C3PoolDeviceMode(value)
+                    message.power = C3PoolDeviceMode(value) != C3PoolDeviceMode.OFF
+                elif attr == DeviceAttributes.pool_target_temperature:
+                    message.target_temperature = float(value)
+                # perf_mode is left as None here, which builds the short
+                # 7-byte body (power/mode/setpoint only). Do NOT set
+                # perf_mode - the full 50-byte body path has a known bug
+                # where it also touches boost/silent state unexpectedly.
+                self.build_send(message)
+            else:
+                _LOGGER.warning(
+                    "[%s] Pool heat pump does not support setting %s yet",
+                    self.device_id,
+                    attr,
+                )
             return
         message: (
             MessageSet | MessageSetECO | MessageSetSilent | MessageSetDisinfect | None
