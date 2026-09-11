@@ -464,6 +464,42 @@ class MideaC3Device(MideaDevice):
                 # perf_mode - the full 50-byte body path has a known bug
                 # where it also touches boost/silent state unexpectedly.
                 self.build_send(message)
+            
+            elif attr in (
+                DeviceAttributes.boost_mode,
+                DeviceAttributes.silent_mode,
+                DeviceAttributes.silent_level,
+            ):
+                message = MessageSetPool(self._message_protocol_version)
+                message.power = bool(self._attributes[DeviceAttributes.power])
+                message.pool_mode = C3PoolDeviceMode(
+                    self._attributes[DeviceAttributes.pool_mode]
+                )
+                message.target_temperature = float(
+                    self._attributes[DeviceAttributes.pool_target_temperature] or 0.0
+                )
+                # boost/silent/normal share one field on the wire (perf_mode) and
+                # are mutually exclusive, plus a separate super_silent bit that
+                # only has meaning while perf_mode == SILENT.
+                if attr == DeviceAttributes.boost_mode:
+                    message.perf_mode = C3PoolPerfMode.BOOST if value else C3PoolPerfMode.NORMAL
+                    message.super_silent = False
+                elif attr == DeviceAttributes.silent_mode:
+                    message.perf_mode = C3PoolPerfMode.SILENT if value else C3PoolPerfMode.NORMAL
+                    message.super_silent = False
+                elif attr == DeviceAttributes.silent_level:
+                    level = C3SilentLevel[str(value)]
+                    if level == C3SilentLevel.OFF:
+                        message.perf_mode = C3PoolPerfMode.NORMAL
+                        message.super_silent = False
+                    elif level == C3SilentLevel.SILENT:
+                        message.perf_mode = C3PoolPerfMode.SILENT
+                        message.super_silent = False
+                    else:  # SUPER_SILENT
+                        message.perf_mode = C3PoolPerfMode.SILENT
+                        message.super_silent = True
+                self.build_send(message)            
+              
             else:
                 _LOGGER.warning(
                     "[%s] Pool heat pump does not support setting %s yet",
