@@ -467,6 +467,49 @@ class MessageSetDisinfect(MessageC3Base):
         return bytearray([disinfect, 0x00, 0x00, 0x00])
 
 
+class MessageSetPool(MessageC3Base):
+    """C3 pool heat pump set basic (body_type 0x01).
+
+    Implements both the short 7-byte set used for plain power/mode/setpoint
+    changes and the full 50-byte body the vendor app uses to reach the
+    performance control bytes. When `perf_mode` is ``None`` the short body is
+    returned (safe, does not touch performance). When `perf_mode` is set the
+    full body is returned and the `super_silent` / `perf_mode` bytes are placed
+    at the offsets discovered on hardware.
+    """
+
+    def __init__(self, protocol_version: int) -> None:
+        """Initialize C3 pool set message."""
+        super().__init__(
+            protocol_version=protocol_version,
+            message_type=MessageType.set,
+            body_type=ListTypes.X01,
+        )
+        self.power = False
+        self.pool_mode = C3PoolDeviceMode.OFF
+        self.target_temperature = 0.0
+        # None -> send short body; set to C3PoolPerfMode to send full body
+        # and reach the performance control bytes.
+        self.perf_mode: C3PoolPerfMode | None = None
+        self.super_silent = False
+
+    @property
+    def _body(self) -> bytearray:
+        mode = int(self.pool_mode) if self.power else int(C3PoolDeviceMode.OFF)
+        raw_temp = round(self.target_temperature) + POOL_TEMP_OFFSET
+        raw_temp = max(0, min(0xFF, raw_temp))
+        length = 7 if self.perf_mode is None else 50
+        body = bytearray(length)
+        body[0] = 0x01
+        body[1] = mode
+        body[2] = raw_temp
+        if self.perf_mode is not None:
+            # Offsets are relative to the data (data[14] -> raw body byte 15).
+            body[14] = 0x01 if self.super_silent else 0x00
+            body[15] = int(self.perf_mode)
+        return body
+
+
 class C3BasicBody(MessageBody):
     """C3 Basic message body."""
 
