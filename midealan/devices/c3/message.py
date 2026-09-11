@@ -896,8 +896,8 @@ class C3PoolBasicBody(MessageBody):
         self.pool_unknown_basic_22 = body[POOL_BASIC_UNKNOWN_22]
         
         self.pool_unknown_16_36_37 = body[36] << 8 | body[37]
-        self.instant_power0 = body[38] << 8 | body[39]
-        self.pool_unknown_16_40_41 = body[40] << 8 | body[41]
+        self.pressure_high = body[38] << 8 | body[39]
+        self.pressure_low = body[40] << 8 | body[41]
 
         
         

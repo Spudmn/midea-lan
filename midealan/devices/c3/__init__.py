@@ -124,7 +124,7 @@ class DeviceAttributes(StrEnum):
     pool_target_temperature = "pool_target_temperature"
     pool_temperature_max = "pool_temperature_max"
     pool_temperature_min = "pool_temperature_min"
-    pool_unknown_16_40_41 = "pool_unknown_16_40_41"
+    
 
 
 def pool_attributes() -> dict[DeviceAttributes, Any]:
@@ -170,7 +170,6 @@ def pool_attributes() -> dict[DeviceAttributes, Any]:
         
         DeviceAttributes.pool_unknown_16_36_37: None,
         DeviceAttributes.instant_power0: None,
-        DeviceAttributes.pool_unknown_16_40_41: None,
         
         
         
@@ -257,7 +256,6 @@ class MideaC3Device(MideaDevice):
             DeviceAttributes.odu_target_fre: None,
             DeviceAttributes.exv_current: None,
             DeviceAttributes.fg_capacity_need: None,
-            DeviceAttributes.instant_power0: None,
             DeviceAttributes.error_code: 0,
             DeviceAttributes.error_code_display: None,
             DeviceAttributes.error_description: None,
