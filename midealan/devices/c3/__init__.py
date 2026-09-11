@@ -169,7 +169,8 @@ def pool_attributes() -> dict[DeviceAttributes, Any]:
         DeviceAttributes.pool_unknown_basic_22: None,
         
         DeviceAttributes.pool_unknown_16_36_37: None,
-        DeviceAttributes.instant_power0: None,
+        DeviceAttributes.pressure_high: None,
+        DeviceAttributes.pressure_low: None,
         
         
         
